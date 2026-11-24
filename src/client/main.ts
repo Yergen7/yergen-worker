@@ -1,22 +1,6 @@
-type Place = { name: string; admin?: string; country?: string; lat: number; lon: number };
+import type { Rates, Summary } from "../index.ts";
 
-type Forecast = {
-	current: {
-		temperature_2m: number;
-		apparent_temperature: number;
-		relative_humidity_2m: number;
-		wind_speed_10m: number;
-		weather_code: number;
-		is_day: number;
-	};
-	daily: {
-		time: string[];
-		weather_code: number[];
-		temperature_2m_max: number[];
-		temperature_2m_min: number[];
-		precipitation_probability_max: (number | null)[];
-	};
-};
+type Place = { name: string; admin?: string; country?: string; lat: number; lon: number };
 
 const app = document.getElementById("app")!;
 const FAV_KEY = "weather:favorites";
@@ -28,7 +12,10 @@ const DEFAULT_PLACES: Place[] = [
 ];
 
 const esc = (s: string) =>
-	s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+	s.replace(
+		/[&<>"']/g,
+		(c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+	);
 
 function describe(code: number, isDay = 1): { icon: string; text: string } {
 	if (code === 0) return { icon: isDay ? "☀️" : "🌙", text: "Ясно" };
@@ -73,7 +60,13 @@ async function searchPlaces(query: string, signal: AbortSignal): Promise<Place[]
 	const res = await fetch(url, { signal });
 	if (!res.ok) throw new Error("Не удалось выполнить поиск");
 	const data = (await res.json()) as {
-		results?: { name: string; admin1?: string; country?: string; latitude: number; longitude: number }[];
+		results?: {
+			name: string;
+			admin1?: string;
+			country?: string;
+			latitude: number;
+			longitude: number;
+		}[];
 	};
 	return (data.results ?? []).map((r) => ({
 		name: r.name,
@@ -84,19 +77,27 @@ async function searchPlaces(query: string, signal: AbortSignal): Promise<Place[]
 	}));
 }
 
-async function fetchForecast(p: Place): Promise<Forecast> {
-	const params = new URLSearchParams({
-		latitude: String(p.lat),
-		longitude: String(p.lon),
-		current: "temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day",
-		daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
-		timezone: "auto",
-		forecast_days: "7",
-		wind_speed_unit: "ms",
-	});
-	const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
-	if (!res.ok) throw new Error("Не удалось получить прогноз");
-	return (await res.json()) as Forecast;
+async function fetchSummary(p: Place): Promise<Summary> {
+	const res = await fetch(
+		`/api/summary?${new URLSearchParams({ lat: String(p.lat), lon: String(p.lon) })}`,
+	);
+	const data = (await res.json().catch(() => null)) as (Summary & { error?: string }) | null;
+	if (!res.ok || !data) throw new Error(data?.error ?? "Не удалось получить прогноз и курсы валют");
+	return data;
+}
+
+const money = (n: number) => new Intl.NumberFormat("ru", { maximumFractionDigits: 2 }).format(n);
+
+function ratesCard(r: Rates) {
+	return `<div class="card">
+		<h2>Курс валют</h2>
+		<div class="stats">
+			<div><span>1 USD</span>${money(r.usdRub)} ₽</div>
+			<div><span>1 EUR</span>${money(r.eurRub)} ₽</div>
+			<div><span>1 USD</span>${money(r.usdKzt)} ₸</div>
+		</div>
+		<p class="muted">Обновлено: ${esc(r.updated)}</p>
+	</div>`;
 }
 
 function shell(inner: string) {
@@ -139,7 +140,8 @@ function bindSearch() {
 							.join("")
 					: `<li><a href="#" onclick="return false">Ничего не найдено</a></li>`;
 			} catch (e) {
-				if ((e as Error).name !== "AbortError") results.innerHTML = `<li><a href="#" onclick="return false">Ошибка поиска</a></li>`;
+				if ((e as Error).name !== "AbortError")
+					results.innerHTML = `<li><a href="#" onclick="return false">Ошибка поиска</a></li>`;
 			}
 		}, 300);
 	});
@@ -160,7 +162,7 @@ async function renderPlace(place: Place) {
 	shell(`<div class="card muted">Загрузка…</div>`);
 	const slot = app.querySelector(".wrap")!.lastElementChild as HTMLElement;
 	try {
-		const f = await fetchForecast(place);
+		const { weather: f, rates } = await fetchSummary(place);
 		const cur = describe(f.current.weather_code, f.current.is_day);
 		const isFav = loadFavorites().some((p) => sameSpot(p, place));
 		const fmt = new Intl.DateTimeFormat("ru", { weekday: "short", day: "numeric", month: "short" });
@@ -195,7 +197,8 @@ async function renderPlace(place: Place) {
 				<p><button class="fav" id="fav">${isFav ? "★ В избранном" : "☆ В избранное"}</button></p>
 			</div>
 			<div class="card"><h2>Прогноз на 7 дней</h2><ul class="days">${days}</ul></div>
-			<p class="muted">Данные: <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a></p>`;
+			${ratesCard(rates)}
+			<p class="muted">Погода: <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>, курсы: <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">ExchangeRate-API</a></p>`;
 		document.getElementById("fav")!.addEventListener("click", () => {
 			const list = loadFavorites();
 			const idx = list.findIndex((p) => sameSpot(p, place));
