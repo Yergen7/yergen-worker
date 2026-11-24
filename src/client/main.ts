@@ -59,8 +59,12 @@ function placeHref(p: Place) {
 	return `/place/${p.lat.toFixed(4)}/${p.lon.toFixed(4)}?${new URLSearchParams({ name: p.name, ...(p.country ? { country: p.country } : {}) })}`;
 }
 
+// Типы GeoNames: PPLC — столица, PPLA — центр области или город республиканского значения.
+const OBLAST_CENTER_CODES = new Set(["PPLC", "PPLA"]);
+
 async function searchPlaces(query: string, signal: AbortSignal): Promise<Place[]> {
-	const url = `https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({ name: query, count: "6", language: "ru", countryCode: "KZ" })}`;
+	// Берём больше результатов и фильтруем: иначе областной центр может потеряться среди сёл с похожим названием.
+	const url = `https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({ name: query, count: "50", language: "ru", countryCode: "KZ" })}`;
 	const res = await fetch(url, { signal });
 	if (!res.ok) throw new Error("Не удалось выполнить поиск");
 	const data = (await res.json()) as {
@@ -68,17 +72,21 @@ async function searchPlaces(query: string, signal: AbortSignal): Promise<Place[]
 			name: string;
 			admin1?: string;
 			country?: string;
+			feature_code?: string;
 			latitude: number;
 			longitude: number;
 		}[];
 	};
-	return (data.results ?? []).map((r) => ({
-		name: r.name,
-		admin: r.admin1,
-		country: r.country,
-		lat: r.latitude,
-		lon: r.longitude,
-	}));
+	return (data.results ?? [])
+		.filter((r) => r.feature_code && OBLAST_CENTER_CODES.has(r.feature_code))
+		.slice(0, 6)
+		.map((r) => ({
+			name: r.name,
+			admin: r.admin1,
+			country: r.country,
+			lat: r.latitude,
+			lon: r.longitude,
+		}));
 }
 
 async function fetchSummary(p: Place): Promise<Summary> {
@@ -92,6 +100,19 @@ async function fetchSummary(p: Place): Promise<Summary> {
 
 const money = (n: number) => new Intl.NumberFormat("ru", { maximumFractionDigits: 2 }).format(n);
 
+/** Дата обновления курсов по-русски, в казахстанском времени (UTC+5). */
+function formatUpdated(value: string): string {
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return value;
+	return new Intl.DateTimeFormat("ru", {
+		day: "numeric",
+		month: "long",
+		hour: "2-digit",
+		minute: "2-digit",
+		timeZone: "Asia/Almaty",
+	}).format(date);
+}
+
 function ratesCard(r: Rates) {
 	return `<div class="card">
 		<h2>Курс валют к тенге</h2>
@@ -101,7 +122,7 @@ function ratesCard(r: Rates) {
 			<div><span>1 RUB</span>${money(r.rubKzt)} ₸</div>
 			<div><span>1 CNY</span>${money(r.cnyKzt)} ₸</div>
 		</div>
-		<p class="muted">Обновлено: ${esc(r.updated)}</p>
+		<p class="muted">Обновлено: ${esc(formatUpdated(r.updated))} (время Казахстана)</p>
 	</div>`;
 }
 
@@ -110,7 +131,7 @@ function shell(inner: string) {
 		<div class="wrap">
 			<header class="top"><a href="/" data-link>⛅ Погода</a></header>
 			<div class="search">
-				<input id="q" type="search" placeholder="Найти город Казахстана…" autocomplete="off" aria-label="Поиск города" />
+				<input id="q" type="search" placeholder="Найти областной центр Казахстана…" autocomplete="off" aria-label="Поиск города" />
 				<ul class="results" id="results"></ul>
 			</div>
 			${inner}
