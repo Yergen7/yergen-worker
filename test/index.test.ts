@@ -7,7 +7,7 @@ const forecast = { current: { temperature_2m: 1 }, daily: { time: [] } };
 const rates = {
 	result: "success",
 	time_last_update_utc: "now",
-	rates: { RUB: 100, EUR: 0.5, KZT: 500 },
+	rates: { KZT: 500, EUR: 0.5, RUB: 100, CNY: 5 },
 };
 
 it("воркер отвечает 404 на запросы без файла в ассетах", async () => {
@@ -36,12 +36,12 @@ it("/api/summary запрашивает погоду и курсы одновр�
 		return Response.json(host.startsWith("api.open-meteo") ? forecast : rates);
 	});
 
-	const response = await SELF.fetch("https://example.com/api/summary?lat=55.75&lon=37.62");
+	const response = await SELF.fetch("https://example.com/api/summary?lat=51.18&lon=71.45");
 	expect(response.status).toBe(200);
 	expect(started.sort()).toEqual(["api.open-meteo.com", "open.er-api.com"]);
 	expect(await response.json()).toEqual({
 		weather: forecast,
-		rates: { usdRub: 100, eurRub: 200, usdKzt: 500, updated: "now" },
+		rates: { usdKzt: 500, eurKzt: 1000, rubKzt: 5, cnyKzt: 100, updated: "now" },
 	});
 });
 

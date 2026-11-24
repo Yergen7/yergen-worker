@@ -20,12 +20,14 @@ export type Forecast = {
 };
 
 export type Rates = {
-	/** 1 USD в рублях */
-	usdRub: number;
-	/** 1 EUR в рублях */
-	eurRub: number;
-	/** 1 USD в тенге */
+	/** Сколько тенге стоит 1 USD */
 	usdKzt: number;
+	/** Сколько тенге стоит 1 EUR */
+	eurKzt: number;
+	/** Сколько тенге стоит 1 RUB */
+	rubKzt: number;
+	/** Сколько тенге стоит 1 CNY */
+	cnyKzt: number;
 	updated: string;
 };
 
@@ -57,10 +59,17 @@ async function getRates(): Promise<Rates> {
 		time_last_update_utc: string;
 		rates: Record<string, number>;
 	}>("https://open.er-api.com/v6/latest/USD", 3600);
-	const { RUB, EUR, KZT } = data.rates;
-	if (data.result !== "success" || !RUB || !EUR || !KZT)
+	// Курсы от доллара: тенге за единицу валюты = KZT / курс валюты к USD.
+	const { KZT, EUR, RUB, CNY } = data.rates;
+	if (data.result !== "success" || !KZT || !EUR || !RUB || !CNY)
 		throw new Error("open.er-api.com: неожиданный ответ");
-	return { usdRub: RUB, eurRub: RUB / EUR, usdKzt: KZT, updated: data.time_last_update_utc };
+	return {
+		usdKzt: KZT,
+		eurKzt: KZT / EUR,
+		rubKzt: KZT / RUB,
+		cnyKzt: KZT / CNY,
+		updated: data.time_last_update_utc,
+	};
 }
 
 function parseCoord(value: string | null, max: number): number | null {

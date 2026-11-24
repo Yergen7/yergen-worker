@@ -5,10 +5,14 @@ type Place = { name: string; admin?: string; country?: string; lat: number; lon:
 const app = document.getElementById("app")!;
 const FAV_KEY = "weather:favorites";
 const DEFAULT_PLACES: Place[] = [
-	{ name: "Москва", country: "Россия", lat: 55.7558, lon: 37.6173 },
 	{ name: "Астана", country: "Казахстан", lat: 51.1801, lon: 71.446 },
-	{ name: "Лондон", country: "Великобритания", lat: 51.5072, lon: -0.1276 },
-	{ name: "Токио", country: "Япония", lat: 35.6762, lon: 139.6503 },
+	{ name: "Алматы", country: "Казахстан", lat: 43.2567, lon: 76.9286 },
+	{ name: "Шымкент", country: "Казахстан", lat: 42.3, lon: 69.6 },
+	{ name: "Караганда", country: "Казахстан", lat: 49.8047, lon: 73.1094 },
+	{ name: "Актобе", country: "Казахстан", lat: 50.2839, lon: 57.167 },
+	{ name: "Атырау", country: "Казахстан", lat: 47.0945, lon: 51.9238 },
+	{ name: "Павлодар", country: "Казахстан", lat: 52.2873, lon: 76.9674 },
+	{ name: "Усть-Каменогорск", country: "Казахстан", lat: 49.9714, lon: 82.6059 },
 ];
 
 const esc = (s: string) =>
@@ -56,7 +60,7 @@ function placeHref(p: Place) {
 }
 
 async function searchPlaces(query: string, signal: AbortSignal): Promise<Place[]> {
-	const url = `https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({ name: query, count: "6", language: "ru" })}`;
+	const url = `https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({ name: query, count: "6", language: "ru", countryCode: "KZ" })}`;
 	const res = await fetch(url, { signal });
 	if (!res.ok) throw new Error("Не удалось выполнить поиск");
 	const data = (await res.json()) as {
@@ -90,11 +94,12 @@ const money = (n: number) => new Intl.NumberFormat("ru", { maximumFractionDigits
 
 function ratesCard(r: Rates) {
 	return `<div class="card">
-		<h2>Курс валют</h2>
+		<h2>Курс валют к тенге</h2>
 		<div class="stats">
-			<div><span>1 USD</span>${money(r.usdRub)} ₽</div>
-			<div><span>1 EUR</span>${money(r.eurRub)} ₽</div>
 			<div><span>1 USD</span>${money(r.usdKzt)} ₸</div>
+			<div><span>1 EUR</span>${money(r.eurKzt)} ₸</div>
+			<div><span>1 RUB</span>${money(r.rubKzt)} ₸</div>
+			<div><span>1 CNY</span>${money(r.cnyKzt)} ₸</div>
 		</div>
 		<p class="muted">Обновлено: ${esc(r.updated)}</p>
 	</div>`;
@@ -105,7 +110,7 @@ function shell(inner: string) {
 		<div class="wrap">
 			<header class="top"><a href="/" data-link>⛅ Погода</a></header>
 			<div class="search">
-				<input id="q" type="search" placeholder="Найти город…" autocomplete="off" aria-label="Поиск города" />
+				<input id="q" type="search" placeholder="Найти город Казахстана…" autocomplete="off" aria-label="Поиск города" />
 				<ul class="results" id="results"></ul>
 			</div>
 			${inner}
@@ -154,7 +159,7 @@ function renderHome() {
 		`<div class="chips">${list.map((p) => `<a class="chip" href="${esc(placeHref(p))}" data-link>${esc(p.name)}</a>`).join("")}</div>`;
 	shell(`
 		${favs.length ? `<div class="card"><h2>Избранное</h2>${chips(favs)}</div>` : ""}
-		<div class="card"><h2>Популярные города</h2>${chips(DEFAULT_PLACES)}</div>`);
+		<div class="card"><h2>Города Казахстана</h2>${chips(DEFAULT_PLACES)}</div>`);
 }
 
 async function renderPlace(place: Place) {
