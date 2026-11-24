@@ -89,13 +89,30 @@ async function searchPlaces(query: string, signal: AbortSignal): Promise<Place[]
 		}));
 }
 
+/** Ошибка с текстом, который можно показать пользователю как есть. */
+class UserError extends Error {}
+
 async function fetchSummary(p: Place): Promise<Summary> {
-	const res = await fetch(
-		`/api/summary?${new URLSearchParams({ lat: String(p.lat), lon: String(p.lon) })}`,
-	);
-	const data = (await res.json().catch(() => null)) as (Summary & { error?: string }) | null;
-	if (!res.ok || !data) throw new Error(data?.error ?? "Не удалось получить прогноз и курсы валют");
-	return data;
+	let res: Response;
+	try {
+		res = await fetch(
+			`/api/summary?${new URLSearchParams({ lat: String(p.lat), lon: String(p.lon) })}`,
+			{ signal: AbortSignal.timeout(15_000) },
+		);
+	} catch (e) {
+		if (e instanceof DOMException && e.name === "TimeoutError") {
+			throw new UserError("Сервер слишком долго отвечает. Попробуйте ещё раз.");
+		}
+		throw new UserError("Нет соединения с интернетом. Проверьте подключение и попробуйте ещё раз.");
+	}
+	if (res.status === 400) throw new UserError("Некорректные координаты города.");
+	const data = (await res.json().catch(() => null)) as Partial<Summary> | null;
+	if (!res.ok || !data?.weather || !data.rates) {
+		throw new UserError(
+			"Не удалось получить погоду или курс валют. Попробуйте ещё раз чуть позже.",
+		);
+	}
+	return { weather: data.weather, rates: data.rates };
 }
 
 const money = (n: number) => new Intl.NumberFormat("ru", { maximumFractionDigits: 2 }).format(n);
@@ -185,7 +202,7 @@ function renderHome() {
 
 async function renderPlace(place: Place) {
 	document.title = `Погода — ${place.name}`;
-	shell(`<div class="card muted">Загрузка…</div>`);
+	shell(`<div class="card muted" role="status">Загружаю…</div>`);
 	const slot = app.querySelector(".wrap")!.lastElementChild as HTMLElement;
 	try {
 		const { weather: f, rates } = await fetchSummary(place);
@@ -234,7 +251,11 @@ async function renderPlace(place: Place) {
 			document.getElementById("fav")!.textContent = idx >= 0 ? "☆ В избранное" : "★ В избранном";
 		});
 	} catch (e) {
-		slot.outerHTML = `<div class="card error">${esc((e as Error).message)}</div>`;
+		if (!(e instanceof UserError)) console.error(e);
+		const message =
+			e instanceof UserError ? e.message : "Не удалось показать данные. Попробуйте ещё раз.";
+		slot.outerHTML = `<div class="card error" role="alert"><p>${esc(message)}</p><p><button class="fav" id="retry">Повторить</button></p></div>`;
+		document.getElementById("retry")?.addEventListener("click", () => void renderPlace(place));
 	}
 }
 
